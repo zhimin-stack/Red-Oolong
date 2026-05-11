@@ -4,30 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>台東紅烏龍茶消費行為調查</title>
+    <!-- CSS 資源 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Firebase SDK (相容模式最穩定) -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FDF8F3; }
-        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #fdf8f3; color: #431407; margin: 0; padding: 0; }
+        .fade-in { animation: fadeIn 0.6s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .checkbox-custom:checked + div { border-color: #ea580c; background-color: #fff7ed; color: #9a3412; box-shadow: 0 4px 12px rgba(234, 88, 12, 0.15); }
+        #error-display { display: none; padding: 20px; background: #fee2e2; color: #b91c1c; border-radius: 12px; margin: 20px; font-family: monospace; font-size: 12px; border: 1px solid #fecaca; }
     </style>
 </head>
 <body>
+    <!-- 防白屏錯誤顯示區 -->
+    <div id="error-display"></div>
     <div id="root"></div>
+
+    <!-- 依序載入必要腳本 -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <!-- Firebase SDK (相容模式) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // ==========================================
-        // 🛠️ 請在此處貼上您從 Firebase 取得的金鑰 🛠️
-        // ==========================================
+        // Firebase 配置
         const firebaseConfig = {
             apiKey: "AIzaSyDkrc26jr_XlaDDbtyg0W59qwH274Hm8Bw", 
             authDomain: "redoolong-c14a7.firebaseapp.com", 
@@ -37,38 +44,53 @@
             appId: "1:250286622698:web:bf7d5f22bdd7fcbac41493"
         };
 
-        // 檢查金鑰是否已設定
-        const isDbReady = firebaseConfig.apiKey !== "";
-        let db;
-        if (isDbReady) {
+        // 錯誤攔截器
+        window.onerror = function(msg, url, line) {
+            const errDiv = document.getElementById('error-display');
+            if (errDiv) {
+                errDiv.style.display = 'block';
+                errDiv.innerHTML = `程式執行錯誤: ${msg} <br> 行號: ${line}`;
+            }
+        };
+
+        try {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-            db = firebase.firestore();
-            firebase.auth().signInAnonymously();
+            var db = firebase.firestore();
+            var auth = firebase.auth();
+        } catch (e) {
+            console.error("Firebase 初始化失敗", e);
         }
 
         const App = () => {
-            const [view, setView] = useState('survey');
+            const [view, setView] = useState('survey'); // survey, admin, thanks
             const [isAdmin, setIsAdmin] = useState(false);
             const [clickCount, setClickCount] = useState(0);
             const [responses, setResponses] = useState([]);
             const [loading, setLoading] = useState(false);
 
-            // 問卷資料狀態 (完全對應 PDF 1-10 題)
-            const [form, setForm] = useState({
+            // 完整問卷欄位
+            const initialForm = {
                 q1: '', q2: '', q3: '', q4: [], q4_other: '', 
                 q5: [], q6: [], q7: '', q8: '', q9: '', q10: '', q10_other: ''
-            });
+            };
+            const [form, setForm] = useState(initialForm);
 
-            // 進入後台監聽數據
             useEffect(() => {
-                if (!isAdmin || !isDbReady) return;
-                const unsub = db.collection('responses').orderBy('time', 'desc').onSnapshot(snap => {
+                auth.signInAnonymously().catch(e => console.error("匿名登入失敗", e));
+            }, []);
+
+            // 進入後台監聽
+            useEffect(() => {
+                if (!isAdmin) return;
+                const unsub = db.collection('responses').orderBy('time', 'desc').limit(500).onSnapshot(snap => {
                     setResponses(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                }, err => {
+                    alert("讀取資料庫失敗，請確認 Firebase Rules 是否已開啟。");
                 });
                 return () => unsub();
             }, [isAdmin]);
 
-            const handleLogoClick = () => {
+            const handleSecretClick = () => {
                 setClickCount(prev => {
                     if (prev + 1 >= 5) { setIsAdmin(true); setView('admin'); return 0; }
                     return prev + 1;
@@ -85,15 +107,18 @@
                 });
             };
 
-            const submit = async (e) => {
+            const handleSubmit = async (e) => {
                 e.preventDefault();
-                if (!isDbReady) {
-                    alert("⚠️ 尚未填寫 Firebase 金鑰，資料無法儲存。請修改程式碼中的 firebaseConfig 部分。");
-                    return;
-                }
                 setLoading(true);
                 try {
                     await db.collection('responses').add({ ...form, time: new Date().toISOString() });
+                    // 噴發彩帶
+                    confetti({
+                        particleCount: 150,
+                        spread: 70,
+                        origin: { y: 0.6 },
+                        colors: ['#ea580c', '#f97316', '#fbbf24']
+                    });
                     setView('thanks');
                 } catch (err) {
                     alert("提交失敗：" + err.message);
@@ -101,204 +126,235 @@
                 setLoading(false);
             };
 
+            const exportCSV = () => {
+                const headers = ["提交時間","Q1.飲用過","Q2.頻率","Q3.量","Q4.方式","Q5.喜愛原因","Q6.看重因素","Q7.認知度","Q8.性別","Q9.年齡","Q10.居住地"];
+                const content = responses.map(r => [
+                    r.time, r.q1, r.q2||"", r.q3||"", (r.q4||[]).join(";"), (r.q5||[]).join(";"), (r.q6||[]).join(";"), r.q7||"", r.q8, r.q9, r.q10==='台東'?'台東':r.q10_other
+                ]);
+                let csv = "\uFEFF" + headers.join(",") + "\n" + content.map(row => row.map(v => `"${v}"`).join(",")).join("\n");
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+                link.download = `紅烏龍問卷數據_${new Date().toLocaleDateString()}.csv`;
+                link.click();
+            };
+
+            const getStats = (key) => {
+                const map = {};
+                responses.forEach(r => {
+                    const v = r[key];
+                    if (Array.isArray(v)) v.forEach(i => map[i] = (map[i] || 0) + 1);
+                    else if (v) map[v] = (map[v] || 0) + 1;
+                });
+                return map;
+            };
+
+            const StatBox = ({ title, qKey, denominator }) => {
+                const data = getStats(qKey);
+                return (
+                    <div className="bg-white p-6 rounded-[2rem] border border-orange-100 shadow-sm">
+                        <h4 className="font-bold text-orange-900 text-sm mb-4 border-l-4 border-orange-500 pl-2">{title}</h4>
+                        <div className="space-y-3">
+                            {Object.entries(data).sort((a,b)=>b[1]-a[1]).map(([label, count]) => {
+                                const ratio = denominator > 0 ? ((count/denominator)*100).toFixed(1) : 0;
+                                return (
+                                    <div key={label}>
+                                        <div className="flex justify-between text-[10px] font-bold text-gray-500 mb-1">
+                                            <span>{label}</span>
+                                            <span>{count}票 ({ratio}%)</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
+                                            <div className="bg-orange-500 h-full" style={{width: `${ratio}%`}}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            };
+
             return (
-                <div className="min-h-screen pb-10">
+                <div className="min-h-screen pb-12">
+                    {/* 導覽列 */}
                     <nav className="max-w-2xl mx-auto p-6 flex justify-between items-center">
-                        <div onClick={handleLogoClick} className="flex items-center gap-2 cursor-pointer select-none active:scale-95 transition-transform">
+                        <div onClick={handleSecretClick} className="flex items-center gap-3 cursor-pointer select-none active:scale-95 transition-all">
                             <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white text-xl shadow-lg">🍵</div>
-                            <span className="font-black text-orange-900 text-xl">紅烏龍問卷</span>
+                            <span className="font-black text-orange-900 text-xl">紅烏龍調查</span>
                         </div>
                         {isAdmin && (
-                            <div className="flex bg-white rounded-lg p-1 shadow border text-[10px] font-bold">
-                                <button onClick={() => setView('survey')} className={`px-3 py-1 rounded ${view==='survey'?'bg-orange-600 text-white':'text-gray-400'}`}>問卷</button>
-                                <button onClick={() => setView('admin')} className={`px-3 py-1 rounded ${view==='admin'?'bg-orange-600 text-white':'text-gray-400'}`}>統計</button>
+                            <div className="flex bg-white rounded-xl p-1 shadow-sm border border-orange-100 gap-1 text-[10px] font-bold">
+                                <button onClick={() => setView('survey')} className={`px-4 py-1.5 rounded-lg transition-all ${view==='survey'?'bg-orange-600 text-white':'text-gray-400'}`}>問卷</button>
+                                <button onClick={() => setView('admin')} className={`px-4 py-1.5 rounded-lg transition-all ${view==='admin'?'bg-orange-600 text-white':'text-gray-400'}`}>統計</button>
                             </div>
                         )}
                     </nav>
 
                     <main className="max-w-2xl mx-auto px-4 fade-in">
                         {view === 'survey' && (
-                            <form onSubmit={submit} className="bg-white rounded-3xl shadow-xl overflow-hidden border border-orange-100">
-                                <div className="bg-orange-600 p-8 text-white">
-                                    <h1 className="text-2xl font-bold text-center">台東紅烏龍茶消費行為調查</h1>
-                                    <p className="text-xs opacity-80 mt-3 text-center leading-relaxed">
-                                        您好！本問卷採匿名方式，所有資料僅供整體統計分析之用，請安心填寫。感謝您的協助！
+                            <form onSubmit={handleSubmit} className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-orange-50">
+                                <div className="bg-orange-600 p-10 text-white text-center">
+                                    <h2 className="text-2xl font-bold">台東紅烏龍茶消費行為調查</h2>
+                                    <p className="text-xs opacity-80 mt-3 leading-relaxed">
+                                        您好！感謝您撥冗參加本研究。本問卷僅供統計分析，請根據您的真實經驗填寫。
                                     </p>
                                 </div>
 
-                                <div className="p-8 space-y-10">
-                                    {/* 第一部分 */}
-                                    <div className="space-y-6">
-                                        <h3 className="text-orange-800 font-black border-l-4 border-orange-600 pl-2">第一部分：飲用習慣與消費量</h3>
-                                        
-                                        <div className="space-y-3">
+                                <div className="p-8 md:p-12 space-y-12">
+                                    <section className="space-y-6">
+                                        <h3 className="font-black text-orange-900 border-b pb-2">第一部分：飲用習慣</h3>
+                                        <div className="space-y-4">
                                             <p className="font-bold text-gray-700">1. 您是否有飲用過「紅烏龍茶」？</p>
                                             <div className="grid grid-cols-2 gap-4">
                                                 {['是', '否'].map(o => (
-                                                    <button key={o} type="button" onClick={() => setForm({...form, q1: o})} className={`p-4 rounded-2xl border-2 font-bold transition-all ${form.q1===o?'border-orange-500 bg-orange-50 text-orange-600':'border-gray-100 text-gray-400'}`}>{o}</button>
+                                                    <label key={o} className="cursor-pointer">
+                                                        <input type="radio" className="hidden" checked={form.q1===o} onChange={()=>setForm({...form, q1: o})} required />
+                                                        <div className={`p-5 rounded-2xl border-2 font-bold text-center transition-all ${form.q1===o?'border-orange-500 bg-orange-50 text-orange-600 shadow-inner':'border-gray-100 text-gray-400'}`}>{o}</div>
+                                                    </label>
                                                 ))}
                                             </div>
                                         </div>
 
                                         {form.q1 === '是' && (
-                                            <div className="space-y-8 fade-in">
-                                                <div className="space-y-3">
-                                                    <p className="font-bold text-gray-700">2. 您多久飲用一次紅烏龍茶？</p>
+                                            <div className="space-y-8 fade-in pt-4">
+                                                <div className="space-y-4">
+                                                    <p className="font-bold text-gray-700 text-sm">2. 您多久飲用一次紅烏龍茶？</p>
                                                     <div className="space-y-2">
-                                                        {['每天','每週3-5次','每週1-2次','每月1-2次','偶爾(頻率低於每月一次)'].map(o => (
-                                                            <label key={o} className="flex items-center p-3 border rounded-xl hover:bg-orange-50 cursor-pointer">
-                                                                <input type="radio" checked={form.q2===o} onChange={()=>setForm({...form, q2: o})} className="w-4 h-4 accent-orange-600" />
-                                                                <span className="ml-3 text-gray-600 text-sm">{o}</span>
+                                                        {['每天','每週3-5次','每週1-2次','每月1-2次','偶爾'].map(o => (
+                                                            <label key={o} className="flex items-center p-4 border rounded-2xl cursor-pointer hover:bg-orange-50/50">
+                                                                <input type="radio" checked={form.q2===o} onChange={()=>setForm({...form, q2: o})} className="w-5 h-5 accent-orange-600" />
+                                                                <span className="ml-4 text-gray-600 text-sm font-medium">{o}</span>
                                                             </label>
                                                         ))}
                                                     </div>
                                                 </div>
-
-                                                <div className="space-y-3">
-                                                    <p className="font-bold text-gray-700">3. 您每次飲用的平均量約為？</p>
+                                                <div className="space-y-4">
+                                                    <p className="font-bold text-gray-700 text-sm">3. 您每次飲用的平均量約為？</p>
                                                     <div className="space-y-2">
-                                                        {['200ml以下(如:小茶杯)','201ml-400ml(如:馬克杯)','401ml-600ml(如:手搖杯)','601ml以上'].map(o => (
-                                                            <label key={o} className="flex items-center p-3 border rounded-xl hover:bg-orange-50 cursor-pointer">
-                                                                <input type="radio" checked={form.q3===o} onChange={()=>setForm({...form, q3: o})} className="w-4 h-4 accent-orange-600" />
-                                                                <span className="ml-3 text-gray-600 text-sm">{o}</span>
+                                                        {['200ml以下','201ml-400ml','401ml-600ml','601ml以上'].map(o => (
+                                                            <label key={o} className="flex items-center p-4 border rounded-2xl cursor-pointer hover:bg-orange-50/50">
+                                                                <input type="radio" checked={form.q3===o} onChange={()=>setForm({...form, q3: o})} className="w-5 h-5 accent-orange-600" />
+                                                                <span className="ml-4 text-gray-600 text-sm font-medium">{o}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-4">
+                                                    <p className="font-bold text-gray-700 text-sm">4. 您通常透過何種方式飲用？(可複選)</p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                        {['自己沖泡','手搖飲店','賣場罐裝','台東當地飲用'].map(o => (
+                                                            <label key={o} className="relative cursor-pointer">
+                                                                <input type="checkbox" className="hidden checkbox-custom" checked={form.q4.includes(o)} onChange={()=>toggleCheck('q4', o)} />
+                                                                <div className="p-4 rounded-2xl border-2 text-xs font-bold text-center transition-all"> {o} </div>
                                                             </label>
                                                         ))}
                                                     </div>
                                                 </div>
 
-                                                <div className="space-y-3">
-                                                    <p className="font-bold text-gray-700">4. 您通常透過何種方式飲用？(可複選)</p>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                        {['自己沖泡','手搖飲店購買','超商/賣場罐裝','台東旅遊當地飲用'].map(o => (
-                                                            <label key={o} className={`p-3 border rounded-xl flex items-center cursor-pointer ${form.q4.includes(o)?'border-orange-500 bg-orange-50':''}`}>
-                                                                <input type="checkbox" checked={form.q4.includes(o)} onChange={()=>toggleCheck('q4', o)} className="accent-orange-600" />
-                                                                <span className="ml-3 text-sm">{o}</span>
-                                                            </label>
-                                                        ))}
-                                                        <div className="sm:col-span-2 flex items-center p-3 border rounded-xl">
-                                                            <span className="text-sm text-gray-400 whitespace-nowrap">其他：</span>
-                                                            <input type="text" className="w-full bg-transparent outline-none text-sm px-2" value={form.q4_other} onChange={e=>setForm({...form, q4_other:e.target.value})} />
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <h3 className="text-orange-800 font-black border-l-4 border-orange-600 pl-2 pt-4">第二部分：偏好與品牌認知</h3>
-                                                <div className="space-y-3">
-                                                    <p className="font-bold text-gray-700">5. 您喜歡紅烏龍的主要原因？(可複選)</p>
+                                                <h3 className="font-black text-orange-900 border-b pb-2 pt-6">第二部分：偏好與品牌認知</h3>
+                                                <div className="space-y-4">
+                                                    <p className="font-bold text-gray-700 text-sm">5. 您喜歡紅烏龍的主要原因？(可複選)</p>
                                                     <div className="space-y-2">
-                                                        {['獨特的熟果香味與蜜香韻味','茶湯甘醇回甘、不苦澀','耐沖泡且冷熱飲皆宜','支持台東在地農產品','包裝精美適合送禮'].map(o => (
-                                                            <label key={o} className={`p-3 border rounded-xl flex items-center cursor-pointer ${form.q5.includes(o)?'border-orange-500 bg-orange-50':''}`}>
-                                                                <input type="checkbox" checked={form.q5.includes(o)} onChange={()=>toggleCheck('q5', o)} />
-                                                                <span className="ml-3 text-sm">{o}</span>
+                                                        {['熟果香味與蜜香韻味','甘醇回甘、不苦澀','耐沖泡且冷熱飲皆宜','支持在地特色產品'].map(o => (
+                                                            <label key={o} className="relative cursor-pointer block">
+                                                                <input type="checkbox" className="hidden checkbox-custom" checked={form.q5.includes(o)} onChange={()=>toggleCheck('q5', o)} />
+                                                                <div className="p-4 rounded-2xl border-2 text-xs font-bold transition-all"> {o} </div>
                                                             </label>
                                                         ))}
                                                     </div>
                                                 </div>
-
-                                                <div className="space-y-3">
-                                                    <p className="font-bold text-gray-700">6. 您最看重的因素為何？(請勾選前三名)</p>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        {['價格實惠','產地證明標章','有機/無毒認證','品牌知名度','外包裝設計感','茶葉烘焙口感'].map(o => (
-                                                            <label key={o} className={`p-3 border rounded-xl flex items-center cursor-pointer ${form.q6.includes(o)?'border-orange-500 bg-orange-50':''}`}>
-                                                                <input type="checkbox" checked={form.q6.includes(o)} onChange={()=>toggleCheck('q6', o, 3)} />
-                                                                <span className="ml-2 text-xs">{o}</span>
+                                                <div className="space-y-4">
+                                                    <p className="font-bold text-gray-700 text-sm">6. 您最看重的因素為何？(前三名)</p>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        {['價格實惠','產地證明標章','有機無毒認證','品牌知名度','外包裝設計','烘焙口感'].map(o => (
+                                                            <label key={o} className="relative cursor-pointer">
+                                                                <input type="checkbox" className="hidden checkbox-custom" checked={form.q6.includes(o)} onChange={()=>toggleCheck('q6', o, 3)} />
+                                                                <div className="p-3 rounded-2xl border-2 text-[10px] text-center font-bold transition-all"> {o} </div>
                                                             </label>
                                                         ))}
                                                     </div>
                                                 </div>
-
-                                                <div className="space-y-3">
-                                                    <p className="font-bold text-gray-700">7. 是否知道紅烏龍是台東主力推廣茶種？</p>
+                                                <div className="space-y-4">
+                                                    <p className="font-bold text-gray-700 text-sm">7. 是否知道紅烏龍是台東主力推廣茶種？</p>
                                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                                         {['非常清楚','大概知道','聽過但不清楚','完全不知道'].map(o => (
-                                                            <button key={o} type="button" onClick={() => setForm({...form, q7: o})} className={`p-3 rounded-xl border-2 transition-all ${form.q7===o?'border-orange-500 bg-orange-50 text-orange-600':'border-gray-100'}`}>{o}</button>
+                                                            <button key={o} type="button" onClick={() => setForm({...form, q7: o})} className={`p-4 rounded-xl border-2 font-bold transition-all ${form.q7===o?'border-orange-500 bg-orange-50 text-orange-900':'border-gray-100 text-gray-400'}`}>{o}</button>
                                                         ))}
                                                     </div>
                                                 </div>
                                             </div>
                                         )}
-                                    </div>
+                                    </section>
 
-                                    {/* 第三部分 */}
-                                    <div className="space-y-6 pt-6 border-t border-orange-100">
-                                        <h3 className="text-orange-800 font-black border-l-4 border-orange-600 pl-2">第三部分：基本資料</h3>
+                                    <section className="space-y-8 pt-10 border-t">
+                                        <h3 className="font-black text-orange-900 border-b pb-2">第三部分：基本資料</h3>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <p className="text-xs font-bold text-gray-400">8. 性別</p>
-                                                <select value={form.q8} onChange={e=>setForm({...form, q8:e.target.value})} className="w-full p-3 border rounded-xl bg-gray-50 outline-none">
-                                                    <option value="">請選擇</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-2">
-                                                <p className="text-xs font-bold text-gray-400">9. 年齡</p>
-                                                <select value={form.q9} onChange={e=>setForm({...form, q9:e.target.value})} className="w-full p-3 border rounded-xl bg-gray-50 outline-none">
-                                                    <option value="">請選擇</option><option value="18歲以下">18歲以下</option><option value="19-25歲">19-25歲</option><option value="26-40歲">26-40歲</option><option value="41-55歲">41-55歲</option><option value="56歲以上">56歲以上</option>
-                                                </select>
-                                            </div>
+                                            <select value={form.q8} onChange={e=>setForm({...form, q8:e.target.value})} className="w-full p-4 border-2 rounded-2xl bg-gray-50 outline-none font-bold text-sm" required>
+                                                <option value="">選擇性別</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option>
+                                            </select>
+                                            <select value={form.q9} onChange={e=>setForm({...form, q9:e.target.value})} className="w-full p-4 border-2 rounded-2xl bg-gray-50 outline-none font-bold text-sm" required>
+                                                <option value="">選擇年齡</option>
+                                                {['18歲以下','19-25歲','26-40歲','41-55歲','56歲以上'].map(a => <option key={a} value={a}>{a}</option>)}
+                                            </select>
                                         </div>
-                                        <div className="space-y-2">
-                                            <p className="text-xs font-bold text-gray-400">10. 居住地</p>
-                                            <div className="flex flex-col sm:flex-row gap-4">
-                                                <label className="flex items-center"><input type="radio" checked={form.q10==='台東'} onChange={()=>setForm({...form, q10:'台東'})} className="accent-orange-600"/><span className="ml-2 text-sm">台東縣市</span></label>
-                                                <div className="flex items-center flex-1 border-b">
-                                                    <input type="radio" checked={form.q10==='其他'} onChange={()=>setForm({...form, q10:'其他'})} className="accent-orange-600"/>
-                                                    <span className="ml-2 text-sm shrink-0">其他：</span>
-                                                    <input type="text" className="w-full bg-transparent p-1 text-sm outline-none" value={form.q10_other} onChange={e=>setForm({...form, q10_other: e.target.value, q10: '其他'})} />
+                                        <div className="p-6 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                                            <p className="text-xs font-bold text-gray-400 mb-4">10. 居住地</p>
+                                            <div className="flex flex-col sm:flex-row gap-6 px-2">
+                                                <label className="flex items-center cursor-pointer"><input type="radio" checked={form.q10==='台東'} onChange={()=>setForm({...form, q10:'台東'})} className="w-5 h-5 accent-orange-600"/><span className="ml-3 font-bold text-gray-700 text-sm">台東縣市</span></label>
+                                                <div className="flex items-center flex-1 border-b-2 border-gray-200 focus-within:border-orange-500 transition-colors">
+                                                    <input type="radio" checked={form.q10==='其他'} onChange={()=>setForm({...form, q10:'其他'})} className="w-5 h-5 accent-orange-600"/>
+                                                    <span className="ml-3 font-bold text-gray-700 text-sm shrink-0">其他：</span>
+                                                    <input type="text" className="w-full bg-transparent p-2 text-sm outline-none font-bold" value={form.q10_other} onChange={e=>setForm({...form, q10_other: e.target.value, q10: '其他'})} placeholder="填寫居住縣市" />
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    </section>
 
-                                    <button disabled={loading || !form.q1} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black py-5 rounded-2xl shadow-xl transition-all disabled:opacity-30 active:scale-95">
-                                        {loading ? "提交中..." : "送出問卷"}
+                                    <button disabled={loading || !form.q1} className={`w-full bg-orange-600 text-white font-black py-6 rounded-[2rem] shadow-2xl shadow-orange-200 transition-all text-lg tracking-widest ${loading ? 'btn-loading' : 'active:scale-95'}`}>
+                                        {loading ? "正在安全上傳數據，請稍候..." : "提交完整問卷"}
                                     </button>
                                 </div>
                             </form>
                         )}
 
                         {view === 'admin' && (
-                            <div className="space-y-6">
-                                <div className="bg-white p-8 rounded-3xl shadow-xl">
-                                    <h2 className="text-2xl font-black text-gray-800 mb-6">即時統計中心</h2>
-                                    {responses.length === 0 ? (
-                                        <div className="text-center py-10 text-gray-300">尚未收到回覆</div>
-                                    ) : (
-                                        <div className="space-y-8">
-                                            <div className="bg-orange-50 p-4 rounded-2xl flex justify-between items-center">
-                                                <span className="font-bold text-orange-800">樣本總計</span>
-                                                <span className="text-3xl font-black text-orange-600">{responses.length}</span>
-                                            </div>
-                                            {/* 您可以在此增加更多詳細圖表 */}
-                                            <p className="text-xs text-gray-400 text-center italic">以下為最近 100 筆原始資料摘要</p>
+                            <div className="space-y-8 animate-fade-in">
+                                <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-orange-100">
+                                    <div className="flex justify-between items-center mb-10">
+                                        <div>
+                                            <h2 className="text-3xl font-black">數據統計分析</h2>
+                                            <p className="text-orange-500 text-xs font-bold uppercase tracking-widest mt-1">Real-time Statistics</p>
                                         </div>
-                                    )}
-                                </div>
-                                <div className="bg-white rounded-3xl shadow-xl overflow-hidden overflow-x-auto">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-gray-50 text-gray-400">
-                                            <tr><th className="p-4">時間</th><th className="p-4">性別</th><th className="p-4">年齡</th><th className="p-4">填過</th></tr>
-                                        </thead>
-                                        <tbody className="divide-y">
-                                            {responses.map(r => (
-                                                <tr key={r.id} className="hover:bg-orange-50/50">
-                                                    <td className="p-4 text-[10px]">{new Date(r.time).toLocaleString()}</td>
-                                                    <td className="p-4">{r.q8}</td>
-                                                    <td className="p-4">{r.q9}</td>
-                                                    <td className="p-4">{r.q1}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                        <div className="flex gap-4">
+                                            <div className="bg-orange-50 px-6 py-2 rounded-2xl text-center">
+                                                <span className="text-[10px] text-orange-600 font-black block">總樣本</span>
+                                                <span className="text-3xl font-black text-orange-700">{responses.length}</span>
+                                            </div>
+                                            <button onClick={exportCSV} className="bg-green-600 text-white font-bold px-6 py-2 rounded-2xl shadow-lg flex items-center gap-2 text-xs">📥 匯出 Excel</button>
+                                        </div>
+                                    </div>
+
+                                    {responses.length > 0 ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <StatBox title="Q1. 飲用過經驗" qKey="q1" denominator={responses.length} />
+                                            <StatBox title="Q2. 飲用頻率" qKey="q2" denominator={responses.filter(r=>r.q1==='是').length} />
+                                            <StatBox title="Q5. 喜愛原因 (複選)" qKey="q5" denominator={responses.filter(r=>r.q1==='是').length} />
+                                            <StatBox title="Q8. 性別比例" qKey="q8" denominator={responses.length} />
+                                            <StatBox title="Q9. 年齡層分佈" qKey="q9" denominator={responses.length} />
+                                            <StatBox title="Q10. 居住地分佈" qKey="q10" denominator={responses.length} />
+                                        </div>
+                                    ) : <p className="text-center py-20 text-gray-300 italic">目前尚未有回傳數據...</p>}
                                 </div>
                             </div>
                         )}
 
                         {view === 'thanks' && (
-                            <div className="bg-white p-16 rounded-3xl shadow-2xl text-center">
-                                <div className="text-6xl mb-6">🍵</div>
-                                <h2 className="text-3xl font-bold mb-4">問卷已提交</h2>
-                                <p className="text-gray-500 mb-10">感謝您的熱心參與！</p>
-                                <button onClick={() => { setForm({q1: '', q2: '', q3: '', q4: [], q4_other: '', q5: [], q6: [], q7: '', q8: '', q9: '', q10: '', q10_other: ''}); setView('survey'); }} className="text-orange-600 font-bold hover:underline">返回問卷</button>
+                            <div className="max-w-md mx-auto bg-white p-16 rounded-[3.5rem] shadow-2xl text-center border-t-8 border-orange-600 fade-in">
+                                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 text-5xl">✓</div>
+                                <h2 className="text-3xl font-black text-gray-900 mb-6 tracking-tight">問卷提交成功！</h2>
+                                <p className="text-gray-500 font-medium leading-relaxed mb-12">
+                                    非常感謝您的參與！您的回饋對於台東紅烏龍茶的研究極具價值。<br/><br/>祝您平安順心，萬事如意！
+                                </p>
+                                <button onClick={() => { setForm(initialForm); setView('survey'); }} className="w-full px-10 py-5 bg-orange-600 text-white font-black rounded-3xl hover:bg-orange-700 transition-all active:scale-95">再填寫一份問卷</button>
                             </div>
                         )}
                     </main>
