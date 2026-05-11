@@ -1,318 +1,128 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  onSnapshot, 
-  query 
-} from 'firebase/firestore';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  Layout, 
-  ClipboardCheck, 
-  BarChart3, 
-  Send, 
-  ChevronRight, 
-  CheckCircle2,
-  PieChart as PieIcon,
-  Lock,
-  Unlock
-} from 'lucide-react';
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台東紅烏龍茶消費行為調查</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #FDF8F3; }
+        .survey-card { display: none; }
+        .survey-card.active { display: block; animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
 
-// --- Firebase 配置 ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'oolong-survey-app';
+    <div class="min-h-screen py-10 px-4">
+        <!-- 頂部標題 -->
+        <nav class="max-w-2xl mx-auto mb-8 flex items-center gap-3">
+            <div class="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg">🍵</div>
+            <h1 class="text-2xl font-black text-orange-900">紅烏龍調查系統</h1>
+        </nav>
 
-const App = () => {
-  const [user, setUser] = useState(null);
-  const [view, setView] = useState('survey'); // 'survey', 'admin', 'thanks'
-  const [responses, setResponses] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [adminUnlockCount, setAdminUnlockCount] = useState(0);
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  
-  // 問卷狀態
-  const [formData, setFormData] = useState({
-    q1: '', q2: '', q3: '', q4: [], q5: [], q6: [], q8: '', q9: '', q10: '', q10_other: ''
-  });
+        <main class="max-w-2xl mx-auto">
+            <!-- 這裡是表單開始 -->
+            <!-- ⚠️ 重要：請將下面的 your-email@example.com 改成您的真實 Email ⚠️ -->
+            <form action="https://formsubmit.co/flps9817@gmail.com" method="POST" id="mainForm" class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-orange-100">
+                
+                <!-- 隱藏設定：提交後跳轉到感謝頁面 -->
+                <input type="hidden" name="_next" value="https://google.com"> <!-- 您可以改成您的 GitHub 網址 -->
+                <input type="hidden" name="_subject" value="新的紅烏龍問卷回覆！">
+                <input type="hidden" name="_captcha" value="false">
 
-  // 初始化認證
-  useEffect(() => {
-    const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
-
-  // 監聽資料庫 (管理員模式才啟動監聽，節省流量)
-  useEffect(() => {
-    if (!user || !isAdminMode) return;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'responses'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setResponses(data);
-    }, (err) => console.error("Firestore error:", err));
-    return () => unsubscribe();
-  }, [user, isAdminMode]);
-
-  // 處理隱藏的管理員進入方式 (連點 5 次)
-  const handleLogoClick = () => {
-    const newCount = adminUnlockCount + 1;
-    if (newCount >= 5) {
-      setIsAdminMode(true);
-      setView('admin');
-      setAdminUnlockCount(0);
-    } else {
-      setAdminUnlockCount(newCount);
-      // 3秒後重置點擊次數
-      setTimeout(() => setAdminUnlockCount(0), 3000);
-    }
-  };
-
-  // 處理問卷提交
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!user) return;
-    setLoading(true);
-    try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'responses'), {
-        ...formData,
-        timestamp: new Date().toISOString(),
-        userId: user.uid
-      });
-      setView('thanks');
-    } catch (error) {
-      console.error("提交失敗", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCheckbox = (field, value, maxSelection = null) => {
-    setFormData(prev => {
-      const current = prev[field];
-      if (current.includes(value)) {
-        return { ...prev, [field]: current.filter(v => v !== value) };
-      } else {
-        if (maxSelection && current.length >= maxSelection) return prev;
-        return { ...prev, [field]: [...current, value] };
-      }
-    });
-  };
-
-  // 統計邏輯
-  const stats = useMemo(() => {
-    if (responses.length === 0) return null;
-    const countFreq = (field) => {
-      return responses.reduce((acc, r) => {
-        const val = r[field];
-        if (Array.isArray(val)) {
-          val.forEach(v => acc[v] = (acc[v] || 0) + 1);
-        } else if (val) {
-          acc[val] = (acc[val] || 0) + 1;
-        }
-        return acc;
-      }, {});
-    };
-    return {
-      total: responses.length,
-      q1: countFreq('q1'),
-      q2: countFreq('q2'),
-      q8: countFreq('q8'),
-      q9: countFreq('q9'),
-      q5: countFreq('q5'),
-    };
-  }, [responses]);
-
-  const StatCard = ({ title, data, type = 'bar' }) => {
-    if (!data) return null;
-    const entries = Object.entries(data);
-    const total = Object.values(data).reduce((a, b) => a + b, 0);
-    return (
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-        <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm md:text-base">
-          {type === 'bar' ? <BarChart3 size={18} className="text-orange-500" /> : <PieIcon size={18} className="text-orange-500" />}
-          {title}
-        </h3>
-        <div className="space-y-4">
-          {entries.map(([label, count]) => {
-            const percentage = ((count / total) * 100).toFixed(1);
-            return (
-              <div key={label}>
-                <div className="flex justify-between text-xs md:text-sm mb-1">
-                  <span className="text-gray-600 truncate mr-2" title={label}>{label}</span>
-                  <span className="font-bold text-gray-900 whitespace-nowrap">{count} 票 ({percentage}%)</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5">
-                  <div className="bg-orange-500 h-1.5 rounded-full transition-all duration-1000" style={{ width: `${percentage}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <div className="min-h-screen bg-[#FDF8F3] py-6 md:py-10 px-4">
-      {/* 導覽列 */}
-      <nav className="max-w-2xl mx-auto mb-8 flex justify-between items-center">
-        <div 
-          onClick={handleLogoClick}
-          className="flex items-center gap-2 text-orange-800 font-black text-xl cursor-pointer select-none active:scale-95 transition-transform"
-        >
-          <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-orange-200">
-            🍵
-          </div>
-          <span className="hidden sm:inline">紅烏龍調查</span>
-        </div>
-
-        {isAdminMode && (
-          <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-orange-100 animate-in fade-in zoom-in duration-300">
-            <button 
-              onClick={() => setView('survey')} 
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${view === 'survey' || view === 'thanks' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400 hover:text-orange-600'}`}
-            >
-              <ClipboardCheck size={16} /> 填寫
-            </button>
-            <button 
-              onClick={() => setView('admin')} 
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all ${view === 'admin' ? 'bg-orange-600 text-white shadow-md' : 'text-gray-400 hover:text-orange-600'}`}
-            >
-              <BarChart3 size={16} /> 統計
-            </button>
-            <button 
-              onClick={() => setIsAdminMode(false)}
-              className="p-2 text-gray-300 hover:text-red-500"
-            >
-              <Unlock size={16} />
-            </button>
-          </div>
-        )}
-      </nav>
-
-      {/* 內容區域 */}
-      <main className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-        {view === 'survey' && (
-          <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-orange-100">
-            <div className="bg-orange-600 p-8 text-white text-center">
-              <h1 className="text-2xl md:text-3xl font-bold mb-2">台東紅烏龍茶消費行為調查</h1>
-              <p className="opacity-90 text-sm">您的意見對研究非常重要，本問卷採匿名方式，請安心填寫。</p>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 md:p-8 space-y-8">
-              {/* 第一部分 */}
-              <section className="space-y-6">
-                <h2 className="text-lg font-bold text-orange-800 border-b-2 border-orange-50 pb-1">第一部分：飲用習慣</h2>
-                <div className="space-y-3">
-                  <p className="font-medium text-gray-700">1. 您是否有飲用過「紅烏龍茶」？</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    {['是', '否'].map(opt => (
-                      <button key={opt} type="button" onClick={() => setFormData({...formData, q1: opt})} className={`p-3 rounded-xl border-2 transition-all ${formData.q1 === opt ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-100 text-gray-400'}`}>
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {formData.q1 === '是' && (
-                  <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="space-y-3">
-                      <p className="font-medium text-gray-700">2. 平均而言，您多久飲用一次？</p>
-                      <div className="grid grid-cols-1 gap-2">
-                        {['每天', '每週3-5次', '每週1-2次', '每月1-2次', '偶爾'].map(opt => (
-                          <label key={opt} className="flex items-center p-3 border rounded-xl hover:bg-gray-50 cursor-pointer">
-                            <input type="radio" name="q2" value={opt} checked={formData.q2 === opt} onChange={e => setFormData({...formData, q2: e.target.value})} className="w-4 h-4 text-orange-600" />
-                            <span className="ml-3 text-gray-600">{opt}</span>
-                          </label>
-                        ))}
-                      </div>
+                <!-- 第一頁：飲用習慣 -->
+                <div id="step1" class="survey-card active">
+                    <div class="bg-orange-600 p-8 text-white">
+                        <h2 class="text-2xl font-bold">第一部分：飲用習慣</h2>
+                        <p class="opacity-80 text-sm mt-2">請根據您的實際情況勾選</p>
                     </div>
-                  </div>
-                )}
-              </section>
+                    <div class="p-8 space-y-6">
+                        <div class="space-y-4">
+                            <p class="font-bold text-gray-700">1. 您是否有飲用過「紅烏龍茶」？</p>
+                            <div class="grid grid-cols-2 gap-4">
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="1.是否有飲用過" value="是" class="hidden peer" required onclick="toggleNextSteps(true)">
+                                    <div class="p-4 text-center border-2 rounded-2xl peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:text-orange-600 text-gray-400 font-bold transition-all">是</div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="1.是否有飲用過" value="否" class="hidden peer" onclick="toggleNextSteps(false)">
+                                    <div class="p-4 text-center border-2 rounded-2xl peer-checked:border-red-500 peer-checked:bg-red-50 peer-checked:text-red-600 text-gray-400 font-bold transition-all">否</div>
+                                </label>
+                            </div>
+                        </div>
 
-              {/* 第三部分 */}
-              <section className="space-y-6">
-                <h2 className="text-lg font-bold text-orange-800 border-b-2 border-orange-50 pb-1">最後：基本資料</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <select value={formData.q8} onChange={e => setFormData({...formData, q8: e.target.value})} className="p-3 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
-                    <option value="">選擇性別</option>
-                    <option value="男">男</option><option value="女">女</option><option value="其他">其他</option>
-                  </select>
-                  <select value={formData.q9} onChange={e => setFormData({...formData, q9: e.target.value})} className="p-3 border rounded-xl outline-none focus:ring-2 focus:ring-orange-500">
-                    <option value="">選擇年齡層</option>
-                    <option value="18歲以下">18歲以下</option><option value="19-25歲">19-25歲</option><option value="26-40歲">26-40歲</option><option value="41-55歲">41-55歲</option><option value="56歲以上">56歲以上</option>
-                  </select>
+                        <!-- 隱藏題：只有選「是」才出現 -->
+                        <div id="conditionalQuestions" class="space-y-6 hidden">
+                            <div class="space-y-3">
+                                <p class="font-bold text-gray-700">2. 平均而言，您多久飲用一次？</p>
+                                <select name="2.飲用頻率" class="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:ring-2 focus:ring-orange-500">
+                                    <option value="每天">每天</option>
+                                    <option value="每週3-5次">每週3-5次</option>
+                                    <option value="每週1-2次">每週1-2次</option>
+                                    <option value="偶爾">偶爾</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button type="button" onclick="nextStep(2)" class="w-full bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg mt-4">下一步</button>
+                    </div>
                 </div>
-              </section>
 
-              <button disabled={loading || !formData.q1} type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50">
-                {loading ? "提交中..." : <><Send size={20} /> 提交問卷</>}
-              </button>
+                <!-- 第二頁：基本資料 -->
+                <div id="step2" class="survey-card">
+                    <div class="bg-gray-800 p-8 text-white">
+                        <h2 class="text-2xl font-bold">第二部分：基本資料</h2>
+                        <p class="opacity-80 text-sm mt-2">最後一小步，感謝您的協助！</p>
+                    </div>
+                    <div class="p-8 space-y-6">
+                        <div class="space-y-4">
+                            <p class="font-bold text-gray-700">您的性別：</p>
+                            <select name="性別" class="w-full p-4 bg-gray-50 border rounded-2xl">
+                                <option value="男">男</option>
+                                <option value="女">女</option>
+                                <option value="其他">其他</option>
+                            </select>
+                        </div>
+                        <div class="space-y-4">
+                            <p class="font-bold text-gray-700">您的年齡：</p>
+                            <select name="年齡層" class="w-full p-4 bg-gray-50 border rounded-2xl">
+                                <option value="18歲以下">18歲以下</option>
+                                <option value="19-40歲">19-40歲</option>
+                                <option value="41-55歲">41-55歲</option>
+                                <option value="56歲以上">56歲以上</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-4">
+                            <button type="button" onclick="nextStep(1)" class="flex-1 bg-gray-100 text-gray-500 font-bold py-4 rounded-2xl">回上一步</button>
+                            <button type="submit" class="flex-[2] bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg">送出問卷</button>
+                        </div>
+                    </div>
+                </div>
             </form>
-          </div>
-        )}
-        
-        {view === 'admin' && (
-          <div className="space-y-8">
-            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-xl border border-blue-50">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-bold text-gray-800">數據統計中心</h1>
-                  <p className="text-gray-500 text-sm">此頁面僅您可見，數據即時從雲端同步</p>
-                </div>
-                <div className="bg-orange-50 px-6 py-3 rounded-2xl border border-orange-100 w-full md:w-auto text-center">
-                  <span className="block text-xs text-orange-600 font-bold uppercase tracking-wider">總回收樣本</span>
-                  <span className="text-3xl font-black text-orange-700">{responses.length}</span>
-                </div>
-              </div>
-              {responses.length === 0 ? (
-                <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200 text-gray-400">目前尚無資料</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <StatCard title="曾飲用過紅烏龍？" data={stats.q1} />
-                  <StatCard title="性別分佈" data={stats.q8} type="pie" />
-                  <StatCard title="年齡層分佈" data={stats.q9} />
-                  <StatCard title="飲用頻率" data={stats.q2} />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {view === 'thanks' && (
-          <div className="max-w-md mx-auto bg-white p-12 rounded-3xl shadow-xl text-center border border-orange-50">
-            <CheckCircle2 size={60} className="mx-auto text-green-500 mb-6" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">感謝您的參與！</h2>
-            <p className="text-gray-500 mb-8 text-sm">您的意見已成功傳送至雲端統計中心。</p>
-            <button onClick={() => { setFormData({q1:'',q2:'',q3:'',q4:[],q5:[],q6:[],q8:'',q9:'',q10:'',q10_other:''}); setView('survey'); }} className="text-orange-600 font-bold hover:underline">再填一份</button>
-          </div>
-        )}
-      </main>
 
-      <footer className="max-w-2xl mx-auto mt-12 text-center text-gray-300 text-[10px]">
-        {isAdminMode ? "管理員模式已啟用" : "紅烏龍消費行為研究專用系統"}
-      </footer>
+            <p class="text-center text-gray-400 text-xs mt-8">© 2024 紅烏龍消費行為研究小組</p>
+        </main>
     </div>
-  );
-};
 
-export default App;
+    <script>
+        function nextStep(step) {
+            document.querySelectorAll('.survey-card').forEach(el => el.classList.remove('active'));
+            document.getElementById('step' + step).classList.add('active');
+            window.scrollTo(0, 0);
+        }
+
+        function toggleNextSteps(show) {
+            const extra = document.getElementById('conditionalQuestions');
+            if(show) {
+                extra.classList.remove('hidden');
+            } else {
+                extra.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
 
 ```
