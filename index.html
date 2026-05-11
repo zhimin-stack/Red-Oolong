@@ -5,122 +5,309 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>台東紅烏龍茶消費行為調查</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Firebase SDK (相容模式最穩定) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Noto Sans TC', sans-serif; background-color: #FDF8F3; }
-        .survey-card { display: none; }
-        .survey-card.active { display: block; animation: fadeIn 0.5s ease-out; }
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
+    <div id="root"></div>
 
-    <div class="min-h-screen py-10 px-4">
-        <!-- 頂部標題 -->
-        <nav class="max-w-2xl mx-auto mb-8 flex items-center gap-3">
-            <div class="w-12 h-12 bg-orange-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg">🍵</div>
-            <h1 class="text-2xl font-black text-orange-900">紅烏龍調查系統</h1>
-        </nav>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
 
-        <main class="max-w-2xl mx-auto">
-            <!-- 這裡是表單開始 -->
-            <!-- ⚠️ 重要：請將下面的 your-email@example.com 改成您的真實 Email ⚠️ -->
-            <form action="https://formsubmit.co/flps9817@gmail.com" method="POST" id="mainForm" class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-orange-100">
-                
-                <!-- 隱藏設定：提交後跳轉到感謝頁面 -->
-                <input type="hidden" name="_next" value="https://google.com"> <!-- 您可以改成您的 GitHub 網址 -->
-                <input type="hidden" name="_subject" value="新的紅烏龍問卷回覆！">
-                <input type="hidden" name="_captcha" value="false">
+        // ==========================================
+        // 🛠️ 請在此處貼上您從 Firebase 取得的金鑰 🛠️
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDkrc26jr_XlaDDbtyg0W59qwH274Hm8Bw", 
+            authDomain: "redoolong-c14a7.firebaseapp.com", 
+            projectId: "redoolong-c14a7", 
+            storageBucket: "redoolong-c14a7.firebasestorage.app",
+            messagingSenderId: "250286622698",
+            appId: "1:250286622698:web:bf7d5f22bdd7fcbac41493"
+        };
 
-                <!-- 第一頁：飲用習慣 -->
-                <div id="step1" class="survey-card active">
-                    <div class="bg-orange-600 p-8 text-white">
-                        <h2 class="text-2xl font-bold">第一部分：飲用習慣</h2>
-                        <p class="opacity-80 text-sm mt-2">請根據您的實際情況勾選</p>
-                    </div>
-                    <div class="p-8 space-y-6">
-                        <div class="space-y-4">
-                            <p class="font-bold text-gray-700">1. 您是否有飲用過「紅烏龍茶」？</p>
-                            <div class="grid grid-cols-2 gap-4">
-                                <label class="cursor-pointer">
-                                    <input type="radio" name="1.是否有飲用過" value="是" class="hidden peer" required onclick="toggleNextSteps(true)">
-                                    <div class="p-4 text-center border-2 rounded-2xl peer-checked:border-orange-500 peer-checked:bg-orange-50 peer-checked:text-orange-600 text-gray-400 font-bold transition-all">是</div>
-                                </label>
-                                <label class="cursor-pointer">
-                                    <input type="radio" name="1.是否有飲用過" value="否" class="hidden peer" onclick="toggleNextSteps(false)">
-                                    <div class="p-4 text-center border-2 rounded-2xl peer-checked:border-red-500 peer-checked:bg-red-50 peer-checked:text-red-600 text-gray-400 font-bold transition-all">否</div>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- 隱藏題：只有選「是」才出現 -->
-                        <div id="conditionalQuestions" class="space-y-6 hidden">
-                            <div class="space-y-3">
-                                <p class="font-bold text-gray-700">2. 平均而言，您多久飲用一次？</p>
-                                <select name="2.飲用頻率" class="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:ring-2 focus:ring-orange-500">
-                                    <option value="每天">每天</option>
-                                    <option value="每週3-5次">每週3-5次</option>
-                                    <option value="每週1-2次">每週1-2次</option>
-                                    <option value="偶爾">偶爾</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <button type="button" onclick="nextStep(2)" class="w-full bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg mt-4">下一步</button>
-                    </div>
-                </div>
-
-                <!-- 第二頁：基本資料 -->
-                <div id="step2" class="survey-card">
-                    <div class="bg-gray-800 p-8 text-white">
-                        <h2 class="text-2xl font-bold">第二部分：基本資料</h2>
-                        <p class="opacity-80 text-sm mt-2">最後一小步，感謝您的協助！</p>
-                    </div>
-                    <div class="p-8 space-y-6">
-                        <div class="space-y-4">
-                            <p class="font-bold text-gray-700">您的性別：</p>
-                            <select name="性別" class="w-full p-4 bg-gray-50 border rounded-2xl">
-                                <option value="男">男</option>
-                                <option value="女">女</option>
-                                <option value="其他">其他</option>
-                            </select>
-                        </div>
-                        <div class="space-y-4">
-                            <p class="font-bold text-gray-700">您的年齡：</p>
-                            <select name="年齡層" class="w-full p-4 bg-gray-50 border rounded-2xl">
-                                <option value="18歲以下">18歲以下</option>
-                                <option value="19-40歲">19-40歲</option>
-                                <option value="41-55歲">41-55歲</option>
-                                <option value="56歲以上">56歲以上</option>
-                            </select>
-                        </div>
-                        <div class="flex gap-4">
-                            <button type="button" onclick="nextStep(1)" class="flex-1 bg-gray-100 text-gray-500 font-bold py-4 rounded-2xl">回上一步</button>
-                            <button type="submit" class="flex-[2] bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg">送出問卷</button>
-                        </div>
-                    </div>
-                </div>
-            </form>
-
-            <p class="text-center text-gray-400 text-xs mt-8">© 2024 紅烏龍消費行為研究小組</p>
-        </main>
-    </div>
-
-    <script>
-        function nextStep(step) {
-            document.querySelectorAll('.survey-card').forEach(el => el.classList.remove('active'));
-            document.getElementById('step' + step).classList.add('active');
-            window.scrollTo(0, 0);
+        // 檢查金鑰是否已設定
+        const isDbReady = firebaseConfig.apiKey !== "";
+        let db;
+        if (isDbReady) {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            firebase.auth().signInAnonymously();
         }
 
-        function toggleNextSteps(show) {
-            const extra = document.getElementById('conditionalQuestions');
-            if(show) {
-                extra.classList.remove('hidden');
-            } else {
-                extra.classList.add('hidden');
-            }
-        }
+        const App = () => {
+            const [view, setView] = useState('survey');
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [clickCount, setClickCount] = useState(0);
+            const [responses, setResponses] = useState([]);
+            const [loading, setLoading] = useState(false);
+
+            // 問卷資料狀態 (完全對應 PDF 1-10 題)
+            const [form, setForm] = useState({
+                q1: '', q2: '', q3: '', q4: [], q4_other: '', 
+                q5: [], q6: [], q7: '', q8: '', q9: '', q10: '', q10_other: ''
+            });
+
+            // 進入後台監聽數據
+            useEffect(() => {
+                if (!isAdmin || !isDbReady) return;
+                const unsub = db.collection('responses').orderBy('time', 'desc').onSnapshot(snap => {
+                    setResponses(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                });
+                return () => unsub();
+            }, [isAdmin]);
+
+            const handleLogoClick = () => {
+                setClickCount(prev => {
+                    if (prev + 1 >= 5) { setIsAdmin(true); setView('admin'); return 0; }
+                    return prev + 1;
+                });
+                setTimeout(() => setClickCount(0), 3000);
+            };
+
+            const toggleCheck = (field, val, max = 99) => {
+                setForm(prev => {
+                    const list = prev[field];
+                    if (list.includes(val)) return {...prev, [field]: list.filter(v => v !== val)};
+                    if (list.length >= max) return prev;
+                    return {...prev, [field]: [...list, val]};
+                });
+            };
+
+            const submit = async (e) => {
+                e.preventDefault();
+                if (!isDbReady) {
+                    alert("⚠️ 尚未填寫 Firebase 金鑰，資料無法儲存。請修改程式碼中的 firebaseConfig 部分。");
+                    return;
+                }
+                setLoading(true);
+                try {
+                    await db.collection('responses').add({ ...form, time: new Date().toISOString() });
+                    setView('thanks');
+                } catch (err) {
+                    alert("提交失敗：" + err.message);
+                }
+                setLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen pb-10">
+                    <nav className="max-w-2xl mx-auto p-6 flex justify-between items-center">
+                        <div onClick={handleLogoClick} className="flex items-center gap-2 cursor-pointer select-none active:scale-95 transition-transform">
+                            <div className="w-10 h-10 bg-orange-600 rounded-xl flex items-center justify-center text-white text-xl shadow-lg">🍵</div>
+                            <span className="font-black text-orange-900 text-xl">紅烏龍問卷</span>
+                        </div>
+                        {isAdmin && (
+                            <div className="flex bg-white rounded-lg p-1 shadow border text-[10px] font-bold">
+                                <button onClick={() => setView('survey')} className={`px-3 py-1 rounded ${view==='survey'?'bg-orange-600 text-white':'text-gray-400'}`}>問卷</button>
+                                <button onClick={() => setView('admin')} className={`px-3 py-1 rounded ${view==='admin'?'bg-orange-600 text-white':'text-gray-400'}`}>統計</button>
+                            </div>
+                        )}
+                    </nav>
+
+                    <main className="max-w-2xl mx-auto px-4 fade-in">
+                        {view === 'survey' && (
+                            <form onSubmit={submit} className="bg-white rounded-3xl shadow-xl overflow-hidden border border-orange-100">
+                                <div className="bg-orange-600 p-8 text-white">
+                                    <h1 className="text-2xl font-bold text-center">台東紅烏龍茶消費行為調查</h1>
+                                    <p className="text-xs opacity-80 mt-3 text-center leading-relaxed">
+                                        您好！本問卷採匿名方式，所有資料僅供整體統計分析之用，請安心填寫。感謝您的協助！
+                                    </p>
+                                </div>
+
+                                <div className="p-8 space-y-10">
+                                    {/* 第一部分 */}
+                                    <div className="space-y-6">
+                                        <h3 className="text-orange-800 font-black border-l-4 border-orange-600 pl-2">第一部分：飲用習慣與消費量</h3>
+                                        
+                                        <div className="space-y-3">
+                                            <p className="font-bold text-gray-700">1. 您是否有飲用過「紅烏龍茶」？</p>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                {['是', '否'].map(o => (
+                                                    <button key={o} type="button" onClick={() => setForm({...form, q1: o})} className={`p-4 rounded-2xl border-2 font-bold transition-all ${form.q1===o?'border-orange-500 bg-orange-50 text-orange-600':'border-gray-100 text-gray-400'}`}>{o}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {form.q1 === '是' && (
+                                            <div className="space-y-8 fade-in">
+                                                <div className="space-y-3">
+                                                    <p className="font-bold text-gray-700">2. 您多久飲用一次紅烏龍茶？</p>
+                                                    <div className="space-y-2">
+                                                        {['每天','每週3-5次','每週1-2次','每月1-2次','偶爾(頻率低於每月一次)'].map(o => (
+                                                            <label key={o} className="flex items-center p-3 border rounded-xl hover:bg-orange-50 cursor-pointer">
+                                                                <input type="radio" checked={form.q2===o} onChange={()=>setForm({...form, q2: o})} className="w-4 h-4 accent-orange-600" />
+                                                                <span className="ml-3 text-gray-600 text-sm">{o}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <p className="font-bold text-gray-700">3. 您每次飲用的平均量約為？</p>
+                                                    <div className="space-y-2">
+                                                        {['200ml以下(如:小茶杯)','201ml-400ml(如:馬克杯)','401ml-600ml(如:手搖杯)','601ml以上'].map(o => (
+                                                            <label key={o} className="flex items-center p-3 border rounded-xl hover:bg-orange-50 cursor-pointer">
+                                                                <input type="radio" checked={form.q3===o} onChange={()=>setForm({...form, q3: o})} className="w-4 h-4 accent-orange-600" />
+                                                                <span className="ml-3 text-gray-600 text-sm">{o}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <p className="font-bold text-gray-700">4. 您通常透過何種方式飲用？(可複選)</p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        {['自己沖泡','手搖飲店購買','超商/賣場罐裝','台東旅遊當地飲用'].map(o => (
+                                                            <label key={o} className={`p-3 border rounded-xl flex items-center cursor-pointer ${form.q4.includes(o)?'border-orange-500 bg-orange-50':''}`}>
+                                                                <input type="checkbox" checked={form.q4.includes(o)} onChange={()=>toggleCheck('q4', o)} className="accent-orange-600" />
+                                                                <span className="ml-3 text-sm">{o}</span>
+                                                            </label>
+                                                        ))}
+                                                        <div className="sm:col-span-2 flex items-center p-3 border rounded-xl">
+                                                            <span className="text-sm text-gray-400 whitespace-nowrap">其他：</span>
+                                                            <input type="text" className="w-full bg-transparent outline-none text-sm px-2" value={form.q4_other} onChange={e=>setForm({...form, q4_other:e.target.value})} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <h3 className="text-orange-800 font-black border-l-4 border-orange-600 pl-2 pt-4">第二部分：偏好與品牌認知</h3>
+                                                <div className="space-y-3">
+                                                    <p className="font-bold text-gray-700">5. 您喜歡紅烏龍的主要原因？(可複選)</p>
+                                                    <div className="space-y-2">
+                                                        {['獨特的熟果香味與蜜香韻味','茶湯甘醇回甘、不苦澀','耐沖泡且冷熱飲皆宜','支持台東在地農產品','包裝精美適合送禮'].map(o => (
+                                                            <label key={o} className={`p-3 border rounded-xl flex items-center cursor-pointer ${form.q5.includes(o)?'border-orange-500 bg-orange-50':''}`}>
+                                                                <input type="checkbox" checked={form.q5.includes(o)} onChange={()=>toggleCheck('q5', o)} />
+                                                                <span className="ml-3 text-sm">{o}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <p className="font-bold text-gray-700">6. 您最看重的因素為何？(請勾選前三名)</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {['價格實惠','產地證明標章','有機/無毒認證','品牌知名度','外包裝設計感','茶葉烘焙口感'].map(o => (
+                                                            <label key={o} className={`p-3 border rounded-xl flex items-center cursor-pointer ${form.q6.includes(o)?'border-orange-500 bg-orange-50':''}`}>
+                                                                <input type="checkbox" checked={form.q6.includes(o)} onChange={()=>toggleCheck('q6', o, 3)} />
+                                                                <span className="ml-2 text-xs">{o}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <p className="font-bold text-gray-700">7. 是否知道紅烏龍是台東主力推廣茶種？</p>
+                                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                                        {['非常清楚','大概知道','聽過但不清楚','完全不知道'].map(o => (
+                                                            <button key={o} type="button" onClick={() => setForm({...form, q7: o})} className={`p-3 rounded-xl border-2 transition-all ${form.q7===o?'border-orange-500 bg-orange-50 text-orange-600':'border-gray-100'}`}>{o}</button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* 第三部分 */}
+                                    <div className="space-y-6 pt-6 border-t border-orange-100">
+                                        <h3 className="text-orange-800 font-black border-l-4 border-orange-600 pl-2">第三部分：基本資料</h3>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <p className="text-xs font-bold text-gray-400">8. 性別</p>
+                                                <select value={form.q8} onChange={e=>setForm({...form, q8:e.target.value})} className="w-full p-3 border rounded-xl bg-gray-50 outline-none">
+                                                    <option value="">請選擇</option><option value="男">男</option><option value="女">女</option><option value="其他">其他</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-xs font-bold text-gray-400">9. 年齡</p>
+                                                <select value={form.q9} onChange={e=>setForm({...form, q9:e.target.value})} className="w-full p-3 border rounded-xl bg-gray-50 outline-none">
+                                                    <option value="">請選擇</option><option value="18歲以下">18歲以下</option><option value="19-25歲">19-25歲</option><option value="26-40歲">26-40歲</option><option value="41-55歲">41-55歲</option><option value="56歲以上">56歲以上</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <p className="text-xs font-bold text-gray-400">10. 居住地</p>
+                                            <div className="flex flex-col sm:flex-row gap-4">
+                                                <label className="flex items-center"><input type="radio" checked={form.q10==='台東'} onChange={()=>setForm({...form, q10:'台東'})} className="accent-orange-600"/><span className="ml-2 text-sm">台東縣市</span></label>
+                                                <div className="flex items-center flex-1 border-b">
+                                                    <input type="radio" checked={form.q10==='其他'} onChange={()=>setForm({...form, q10:'其他'})} className="accent-orange-600"/>
+                                                    <span className="ml-2 text-sm shrink-0">其他：</span>
+                                                    <input type="text" className="w-full bg-transparent p-1 text-sm outline-none" value={form.q10_other} onChange={e=>setForm({...form, q10_other: e.target.value, q10: '其他'})} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <button disabled={loading || !form.q1} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-black py-5 rounded-2xl shadow-xl transition-all disabled:opacity-30 active:scale-95">
+                                        {loading ? "提交中..." : "送出問卷"}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+
+                        {view === 'admin' && (
+                            <div className="space-y-6">
+                                <div className="bg-white p-8 rounded-3xl shadow-xl">
+                                    <h2 className="text-2xl font-black text-gray-800 mb-6">即時統計中心</h2>
+                                    {responses.length === 0 ? (
+                                        <div className="text-center py-10 text-gray-300">尚未收到回覆</div>
+                                    ) : (
+                                        <div className="space-y-8">
+                                            <div className="bg-orange-50 p-4 rounded-2xl flex justify-between items-center">
+                                                <span className="font-bold text-orange-800">樣本總計</span>
+                                                <span className="text-3xl font-black text-orange-600">{responses.length}</span>
+                                            </div>
+                                            {/* 您可以在此增加更多詳細圖表 */}
+                                            <p className="text-xs text-gray-400 text-center italic">以下為最近 100 筆原始資料摘要</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="bg-white rounded-3xl shadow-xl overflow-hidden overflow-x-auto">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-gray-50 text-gray-400">
+                                            <tr><th className="p-4">時間</th><th className="p-4">性別</th><th className="p-4">年齡</th><th className="p-4">填過</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {responses.map(r => (
+                                                <tr key={r.id} className="hover:bg-orange-50/50">
+                                                    <td className="p-4 text-[10px]">{new Date(r.time).toLocaleString()}</td>
+                                                    <td className="p-4">{r.q8}</td>
+                                                    <td className="p-4">{r.q9}</td>
+                                                    <td className="p-4">{r.q1}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'thanks' && (
+                            <div className="bg-white p-16 rounded-3xl shadow-2xl text-center">
+                                <div className="text-6xl mb-6">🍵</div>
+                                <h2 className="text-3xl font-bold mb-4">問卷已提交</h2>
+                                <p className="text-gray-500 mb-10">感謝您的熱心參與！</p>
+                                <button onClick={() => { setForm({q1: '', q2: '', q3: '', q4: [], q4_other: '', q5: [], q6: [], q7: '', q8: '', q9: '', q10: '', q10_other: ''}); setView('survey'); }} className="text-orange-600 font-bold hover:underline">返回問卷</button>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
